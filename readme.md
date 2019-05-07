@@ -21,7 +21,9 @@ menu题目<br>
 3.这个题目，总共找到了五种解题方法（getshell或者成功写malloc_hook视为解题成功）<br>
 3.1.这个题目一共只能申请三个chunk，使用chunka、chunkb、chunkc代替。思路为使用chunkb修改chunkc的pre_size，pre_size覆盖chunka,chunkb。然后将chunkc的inuse位写0,free(chunkc)达到conslidate(chunka+chunkb+chunkc)的目的，此时可以通过malloc切割chunkabc来写chunkb
 3.2.和第一种类似，也是将chunkc in use位写0，通过free(chunka)，之后通过unlink 去consolidate(chunkb)，让chunka和chunkb合并。使用malloc切割chunkab来写chunkb<br>
-3.3.修改t_arena中top chunk的地址，在chunka中伪造一个top chunk，在t_arena的top chunk地址最低位写0，这个地址刚好落在chunka内，如果此时在申请一个chunkc，就会造成chunkb和chunkc的overlap，就可以使用chunkc去修改chunkb
+3.3.修改t_arena中top chunk的地址，在chunka中伪造一个top chunk，在t_arena的top chunk地址最低位写0，这个地址刚好落在chunka内，如果此时在申请一个chunkc，就会造成chunkb和chunkc的overlap，就可以使用chunkc去修改chunkb。完成fastbin attack。<br>
+3.4.house of force。修改top chunk size,通过malloc 将top chunk size推向高地址free_hook，然后计算好值，使得free_hook值刚好为system_addr，这样在free()的时候就可以条用system来getshell了
+3.5.
 
 
 
@@ -148,7 +150,8 @@ Q：为什么不用one_gadget?为什么不用malloc_hook?<br>
 这样跳转one_gadget的地址存在一定的偏移，在xxx1或xxx9的时候，不能成功getshell<br>
 这也是不能使用malloc_hook的原因，没有办法使用one_gadget。<br>
 之所以使用free_hook，是因为在free(chunkx)时,调用free_hook的时候，会将chunkx的data段作为free_hook的参数<br>
-即free_hook(chunkx) -> system("/bin/sh")<br>
+所以这里使用system_addr,即free_hook(chunkx) -> system("/bin/sh")<br>
+以下是计算偏移：<br>
 ```
   main_arena=main_arena-0x58
   malloc_hook=main_arena-0x10
@@ -167,8 +170,24 @@ Q：为什么不用one_gadget?为什么不用malloc_hook?<br>
   success(hex(one_gadget))
 
 ```
+整理heap,伪造top chunk,修改t_arena中top chunk的地址，使得伪造topchunk变成真的topchunk
+```
+  new(0,main_arena,'')
+  new(0,0x70,'/bin/sh'.ljust(0x48,'\x00')+p64(offset+system_addr+0x8))
+  new(2,heap_addr-0x78+0x79, '')
 
-
+```
+0x7fffff419230就是计算出来的top chunk size<br>
+![3.4.1](img/3.4.1.PNG)<br>
+之后new(offset),将top chunk size推向高地址free_hook,然后free(chunka)->free_hook(chunka_data)->system("/bin/sh")
+```
+  new(2,offset,'')
+  delete(0)#getshell
+```
+![3.4.2](img/3.4.2.PNG)<br>
+free函数内call free_hook时的状态<br>
+![3.4.3](img/3.4.3.PNG)<br>
+### 3.5.
 
 
 
