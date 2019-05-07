@@ -25,7 +25,7 @@ menu题目<br>
 3.1.这个题目一共只能申请三个chunk，使用chunka、chunkb、chunkc代替。思路为使用chunkb修改chunkc的pre_size，pre_size覆盖chunka,chunkb。然后将chunkc的inuse位写0,free(chunkc)达到conslidate(chunka+chunkb+chunkc)的目的，此时可以通过malloc切割chunkabc来写chunkb
 3.2.和第一种类似，也是将chunkc in use位写0，通过free(chunka)，之后通过unlink 去consolidate(chunkb)，让chunka和chunkb合并。使用malloc切割chunkab来写chunkb<br>
 3.3.修改t_arena中top chunk的地址，在chunka中伪造一个top chunk，在t_arena的top chunk地址最低位写0，这个地址刚好落在chunka内，如果此时在申请一个chunkc，就会造成chunkb和chunkc的overlap，就可以使用chunkc去修改chunkb。完成fastbin attack。<br>
-3.4.house of force。修改top chunk size,通过malloc 将top chunk size推向高地址free_hook，然后计算好值，使得free_hook值刚好为system_addr，这样在free()的时候就可以条用system来getshell了
+3.4.house of force。修改top chunk size,通过malloc 将top chunk size推向高地址free_hook，然后计算好值，使得free_hook值刚好为system_addr，这样在free()的时候就可以条用system来getshell了<br>
 3.5.修改t_arena中unsorted bin上chunkb的位置，伪造出一个fake chunkb,这个fake chunkb和chunka存在overlap，然后就可以完成fastbin attack
 
 
